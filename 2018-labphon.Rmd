@@ -1,0 +1,471 @@
+---
+title: 'Longer vowel duration correlates with tongue root advancement in Italian and Polish: An ultrasound study'
+author: "Stefano Coretta"
+date: "The University of Manchester"
+institute: "LabPhon16, 19--22 June 2018, Lisbon, Portugal"
+output:
+  beamer_presentation:
+    citation_package: natbib
+    highlight: zenburn
+    latex_engine: xelatex
+fontsize: 12pt
+bibliography: linguistics.bib
+biblio-style: unified.bst
+header-includes:
+- \frenchspacing
+- \usepackage{cleveref}
+- \usetheme{metropolis}
+- \titlegraphic{\includegraphics[height=1cm]{./graphics/logo.png}}
+- \usecolortheme[snowy]{owl}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+theme_set(theme_light())
+library(rticulate)
+library(lme4)
+library(effects)
+cbPalette <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#999999")
+```
+
+```{r read-data, include=FALSE}
+speakers <- read_csv("./datasets/speakers.csv")
+stimuli <- read_csv("./datasets/stimuli.csv")
+
+duration_raw <- list.files(
+  path = "./datasets/acoustics/",
+  pattern = "*-durations.csv",
+  full.names = TRUE
+) %>%
+  map_df(~read_csv(., na = "--undefined--"))
+
+columns <- c(
+  "speaker",
+  "seconds",
+  "rec_date",
+  "prompt",
+  "label",
+  "TT_displacement_sm",
+  "TT_velocity",
+  "TT_velocity_abs",
+  "TD_displacement_sm",
+  "TD_velocity",
+  "TD_velocity_abs",
+  "TR_displacement_sm",
+  "TR_velocity",
+  "TR_velocity_abs"
+)
+
+duration <- list.files(
+  path = "./datasets/ultrasound/",
+  pattern = "*-tongue-cart.tsv",
+  full.names = TRUE
+) %>%
+  map_df(~read_aaa(., column_names = columns, format = "wide")) %>%
+  select(-(X_1:Y_42)) %>%
+  filter(label == "closure_") %>%
+  mutate(word = word(prompt, 2)) %>%
+  left_join(y = speakers) %>%
+  left_join(y = stimuli) %>%
+  left_join(y = duration_raw) %>%
+  filter(c1_phonation == "voiceless") %>%
+  droplevels() %>%
+  mutate(
+    c2_phonation = factor(c2_phonation, levels = c("voiceless", "voiced")),
+    language = recode(language, italian = "Italian", polish = "Polish"),
+    syl_rate = ifelse(
+      language == "Italian",
+      8 / sentence_duration,
+      6 / sentence_duration
+    )
+  ) %>%
+  mutate_if(is.character, as.factor) %>%
+  # filter clear outlier
+  filter(TR_displacement_sm > 40) %>%
+  group_by(speaker) %>%
+  mutate(
+    vowel_duration_z = scale(vowel_duration),
+    tongue_root = -TR_displacement_sm,
+    tongue_root_z = scale(tongue_root)
+  ) %>%
+  ungroup() %>%
+  filter(tongue_root_z < 3)
+```
+
+# Background
+
+The **voicing effect**
+
+* shorter vowels before voiceless stops, longer vowels before voiced stops
+
+\tiny
+
+@heffner1937; @house1953; @belasco1953; @peterson1960; @halle1967; @chen1970; @klatt1973; @lisker1974; @raphael1975; @javkin1976; @maddieson1976; @farnetani1986; @kluender1988; @laeufer1992; @fowler1992; @hussein1994; @esposito2002; @lampp2004; @warren2005; @durvasula2012
+
+\normalsize
+
+Still **no consensus** on source!
+
+# Background
+
+Proposed accounts:
+
+* **production**
+    * constant articulatory force [@belasco1953;@delattre1962]
+    * durational trade-off [@slis1969;@lehiste1970]
+    * laryngeal adjustment [@halle1967]
+    * closing gesture duration [@chen1970]
+
+* **perception**
+    * misperception [@javkin1976]
+    * enhancement [@kluender1988]
+
+* but **problems** [@maddieson1976;@fowler1992]
+
+# Background
+
+* Aereodynamic Voicing Constraint [@ohala2011]
+    * $\Delta{}P < \theta$
+
+* **Tongue root advancement** [@rothenberg1967; @westbury1983]
+    * voiced stops are produced with advanced tongue root
+
+# Background
+
+**This talk**:
+
+* Support for **durational trade-off hypothesis** of the voicing effect
+
+* Link between **vowel duration**, **closure duration**, and **tongue root position**
+
+# Methods
+
+* **Participants**: 11 Italians (5 F, 6 M), 6 Polish (3 F, 3 M)
+* **Targets**
+    * \textbf{C\textsubscript{1}V\textsubscript{1}C\textsubscript{2}V\textsubscript{1}} (C\textsubscript{1} = /p/, V\textsubscript{1} = /a, o, u/, C\textsubscript{2} = /t, d, k, g/)
+    * *pata*, *pada*, *paka*, ..., *poto*, *podo*, ...
+* **Frame sentence**
+    - *Dico X lentamente*, 'I say X slowly'
+    - *Mówię X teraz*, 'I say X now'
+* **Reproducibility**
+    - <https://github.com/stefanocoretta/2018-labphon>
+* **Measurements**
+    * Durational data from acoustics [@boersma2016]
+    * Tongue root position (advancement) from ultrasound tongue imaging [@articulate2011; @articulate2008]
+
+# Methods: Acoustic landmarks
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.8\textwidth]{./graphics/praat-annotation.png}
+\end{figure}
+
+# Methods: Tongue root position
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.8\textwidth]{./graphics/trp.png}
+\end{figure}
+
+# Results: Vowel duration
+
+\centering
+
+```{r vow-duration-plot, echo=FALSE}
+set.seed(7877)
+duration %>%
+  ggplot(aes(vowel, vowel_duration, fill = c2_phonation)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.1) +
+  facet_grid(~ language) +
+  xlab("Vowel") +
+  ylab("Vowel duration (ms)") +
+  scale_fill_manual(name = "C2 voicing", values = cbPalette)
+```
+
+```{r vow-dur-lm, echo=FALSE, include=FALSE}
+vow_dur_lm <- lmer(
+  vowel_duration ~
+    c2_phonation +
+    c2_place +
+    vowel +
+    c2_phonation:vowel +
+    syl_rate +
+    (1+c2_phonation|speaker) +
+    (1|item),
+  REML = FALSE,
+  data = duration
+)
+
+vow_dur_lm_null <- lmer(
+  vowel_duration ~
+#    c2_phonation +
+    c2_place +
+    vowel +
+#    c2_phonation:vowel +
+    syl_rate +
+    (1+c2_phonation|speaker) +
+    (1|item),
+  REML = FALSE,
+  data = duration
+)
+
+vow_dur_anova <- anova(vow_dur_lm_null, vow_dur_lm)
+summary(vow_dur_lm)
+```
+
+# Results: Closure duration
+
+\centering
+
+```{r clos-duration-plot, echo=FALSE, warning=FALSE}
+set.seed(7877)
+duration %>%
+  ggplot(aes(vowel, closure_duration, fill = c2_phonation)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.1) +
+  facet_grid(~ language) +
+  xlab("Vowel") +
+  ylab("Closure duration (ms)") +
+  scale_fill_manual(name = "C2 voicing", values = cbPalette)
+```
+
+```{r clos-dur-lm, echo=FALSE, include=FALSE}
+clos_dur_lm <- lmer(
+  closure_duration ~
+    c2_phonation +
+    c2_place +
+    vowel +
+    c2_phonation:vowel +
+    syl_rate +
+    (1+c2_phonation|speaker) +
+    (1|item),
+  REML = FALSE,
+  data = duration
+)
+
+clos_dur_lm_null <- lmer(
+  closure_duration ~
+#    c2_phonation +
+    c2_place +
+    vowel +
+#    c2_phonation:vowel +
+    syl_rate +
+    (1+c2_phonation|speaker) +
+    (1|item),
+  REML = FALSE,
+  data = duration
+)
+
+clos_dur_anova <- anova(clos_dur_lm_null, clos_dur_lm)
+summary(clos_dur_lm)
+```
+
+# Results: Vowel and closure duration
+
+```{r vow-clos-lm, echo=FALSE, include=FALSE}
+vow_clos_lm <- lmer(
+  vowel_duration ~
+    closure_duration +
+    syl_rate +
+    vowel +
+    c2_place +
+    (1|speaker) +
+    (1|item),
+  data = duration,
+  REML = FALSE
+)
+summary(vow_clos_lm)
+```
+
+\centering
+
+```{r vow-clos-plot, echo=FALSE, warning=FALSE, out.height="200pt"}
+as_tibble(effect("closure_duration", vow_clos_lm)) %>%
+  ggplot(aes(closure_duration, fit)) +
+  geom_point(
+    data = filter(duration, vowel_duration < 151),
+    aes(closure_duration, vowel_duration, colour = language),
+    alpha = 0.2
+  ) +
+  geom_ribbon(aes(ymax = upper, ymin = lower), fill = cbPalette[3], alpha = 0.2) +
+  geom_line(colour = cbPalette[3]) +
+  coord_fixed(ratio = 1) +
+  labs(
+    x = "Closure duration (ms)",
+    y = "Vowel duration (ms)"
+  ) +
+  scale_color_manual(name = "Language", values = cbPalette[1:2])
+```
+
+# Results: Interim summary
+
+According to LMERs, in Italian and Polish:
+
+* Vowels are **15 ms longer** when followed by a voiced stop
+
+* Consonant closure is **16 ms shorter** if it is a voiced stop
+
+* Vowel duration is inversely correlated with closure duration
+
+Durational trade-off?
+
+# Results: Interim summary
+
+\begin{figure}
+  \includegraphics[width=0.8\textwidth]{./graphics/trade-off.pdf}
+\end{figure}
+
+# Results: Release to Release duration
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.8\textwidth]{./graphics/rel-rel.png}
+\end{figure}
+
+# Results: Release to Release duration
+
+```{r rr-box-lang, echo=FALSE, warning=FALSE}
+set.seed(7877)
+duration %>%
+  group_by(speaker) %>%
+  mutate(rel_rel = scale(rel_rel)) %>%
+  ggplot(aes(c2_phonation, rel_rel, fill = c2_phonation)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.1) +
+  facet_grid(~ language) +
+  scale_fill_manual(name = "C2 voicing", values = cbPalette[1:2]) +
+  labs(
+    x = "C2 voicing",
+    y = "Release to Release duration (z-scores)"
+  ) +
+  theme(legend.position = "none")
+```
+
+```{r rr-lm, echo=FALSE, include=FALSE}
+rr_lm <- lmer(
+  rel_rel ~
+    c2_phonation +
+    vowel +
+    c2_place +
+    syl_rate +
+    language +
+    (1+c2_phonation|speaker) +
+    (1|item),
+  data = duration,
+  REML = FALSE
+)
+
+rr_lm_null <- lmer(
+  rel_rel ~
+    vowel +
+    c2_place +
+    syl_rate +
+    language +
+    (1+c2_phonation|speaker) +
+    (1|item),
+  data = duration,
+  REML = FALSE
+)
+
+anova(rr_lm_null, rr_lm)
+summary(rr_lm)
+```
+
+# Discussion: Durational trade-off
+
+\begin{figure}
+  \includegraphics[width=0.8\textwidth]{./graphics/trade-off-2.pdf}
+\end{figure}
+
+<!-- # Discussion: Vowel duration and tongue root position -->
+
+<!-- * Advancing root during vowel **in voiced and voiceless stops** -->
+<!--     * voiced stops have greater advancement at closure onset -->
+
+<!-- * Vowel duration correlates with tongue root position -->
+<!--     * But **no interaction** between C2 voicing and tongue root position on vowel duration -->
+
+# Discussion: Tongue root advancement
+
+\begin{figure}
+  \centering
+  \includegraphics[width=0.8\textwidth]{./graphics/tra-series.pdf}
+\end{figure}
+
+# Discussion: Vowel duration and tongue root position
+
+```{r tr-lm, echo=FALSE, include=FALSE}
+vow_tr_lm <- lmer(
+  vowel_duration ~
+    tongue_root +
+    c2_phonation +
+    vowel +
+    syl_rate +
+    (1+tongue_root|speaker) +
+    (1|item),
+  data = duration,
+  REML = FALSE
+)
+
+vow_tr_lm_null <- lmer(
+  vowel_duration ~
+    c2_phonation +
+    vowel +
+    syl_rate +
+    (1+tongue_root|speaker) +
+    (1|item),
+  data = duration,
+  REML = FALSE
+)
+
+anova(vow_tr_lm_null, vow_tr_lm)
+summary(vow_tr_lm)
+```
+
+```{r vow-tr-plot, echo=FALSE, warning=FALSE}
+as_tibble(effect("tongue_root", vow_tr_lm)) %>%
+  ggplot(aes(tongue_root, fit)) +
+  geom_rug(
+    inherit.aes = FALSE,
+    data = duration,
+    mapping = aes(x = tongue_root),
+    alpha = 0.2
+  ) +
+  geom_ribbon(aes(ymax = upper, ymin = lower), fill = cbPalette[3], alpha = 0.2) +
+  geom_line(colour = cbPalette[3]) +
+  labs(
+    x = "Tongue root position (mm)",
+    y = "Vowel duration (ms)"
+  ) +
+  scale_color_manual(name = "Language", values = cbPalette[1:2])
+```
+
+# Discussion: Vowel duration and tongue root position
+
+<!-- * Voiced stops have a shorter closure duration, but no interaction between C2 voicing and tongue root position -->
+
+* **Hypothesis**: A later closure onset is (diachronically) selected in the context of voiced stops because it allows for more root advancement within closure (which facilitates voicing)
+
+* Different possible scenarios regarding timing and velocity of advancement gesture
+    * same/different timing
+    * same/different velocity
+
+# Conclusions
+
+* **Release to Release** invariance supports a durational trade-off account for the voicing effect
+
+* Vowel duration and closure duration are **inversely correlated**
+
+* Vowel duration and tongue root position are **directly correlated**
+
+# The end
+
+\centering
+\Huge Thanks!
+
+\normalsize
+
+This project is funded by the School of Arts, Languages and Cultures at the University of Manchester.
+I would like to thank my supervisors, Ricardo Bermúdez-Otero and Patrycja Strycharczuk for the invaluable help and support, and all the members of the Phonetics Lab at the University of Manchester for the stimulating conversations about this project. All errors are my own.
